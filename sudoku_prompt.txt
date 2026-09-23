@@ -86,471 +86,343 @@ Windows PC：
 修正は追加ではなく置換。
 
 以下に見本のコード "sudoku_mihon.html" を示す。
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>数独</title>
-
 <style>
 *{box-sizing:border-box}
-body{
-  margin:0;padding:12px;background:#f8f9fa;color:#333;
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
-              "Hiragino Sans","Yu Gothic UI",Roboto,sans-serif;
-  -webkit-tap-highlight-color:transparent
-}
+body{margin:0;padding:12px;background:#f8f9fa;color:#333;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Sans","Yu Gothic UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
 main{max-width:360px;margin:auto}
-header{
-  display:flex;justify-content:space-between;align-items:center;
-  margin-bottom:12px;padding:0 4px
-}
+header{display:flex;justify-content:space-between;align-items:center;margin:0 4px 12px}
 h1{margin:0;font-size:1.25rem}
-#timer{
-  padding:4px 10px;border-radius:6px;background:#e9ecef;
-  font:700 1.1rem monospace
-}
-
-/* 盤面 */
-#board-container{
-  position:relative;width:100%;aspect-ratio:1;
-  margin-bottom:12px;background:#fff;
-  border:3px solid #343a40;overflow:hidden
-}
-#board{
-  display:grid;grid-template-columns:repeat(9,1fr);
-  width:100%;height:100%
-}
-.cell{
-  display:flex;align-items:center;justify-content:center;
-  border:0;border-right:1px solid #dee2e6;
-  border-bottom:1px solid #dee2e6;
-  padding:0;margin:0;background:#fff;color:#315f8a;
-  font-size:1.35rem;font-weight:700;
-  outline:0;cursor:pointer
-}
-.cell:nth-child(9n){border-right:0}
-.cell:nth-child(n+73){border-bottom:0}
-
-.fixed{
-  background:#f2f4f6;
-  color:#212529;font-weight:800;cursor:default
-}
-
-/* 3×3構造線：セル状態とは独立 */
-.grid-overlay{
-  position:absolute;inset:0;pointer-events:none;
-  display:grid;
-  grid-template-columns:repeat(3,1fr);
-  grid-template-rows:repeat(3,1fr)
-}
-.grid-block:nth-child(3n+1),
-.grid-block:nth-child(3n+2){
-  border-right:3px solid #343a40
-}
-.grid-block:nth-child(-n+6){
-  border-bottom:3px solid #343a40
-}
-
-/* セル状態 */
-.selected{background:#b3d7ff!important}
-.highlight{background:#f0f4f8}
-.same{background:#d0e2ff}
-.error{
-  background:#f8d7da!important;
-  color:#b02a37!important
-}
-
-#status{
-  min-height:24px;margin-bottom:12px;text-align:center;
-  color:#b02a37;font-weight:700;font-size:.95rem
-}
-.success{color:#2f7a45!important}
-
-/* 操作部 */
-#pad{
-  display:grid;grid-template-columns:repeat(5,1fr);
-  gap:8px;margin-bottom:12px
-}
-.btn{
-  border:1px solid #ced4da;border-radius:8px;
-  background:#fff;font-weight:700;cursor:pointer;
-  touch-action:manipulation
-}
-.num{padding:12px 0;font-size:1.2rem;color:#212529}
-.clear{
-  background:#f8d7da;color:#721c24;
-  font-size:.95rem;border-color:#f5c6cb
-}
-.action{
-  width:100%;padding:14px;border:0;border-radius:8px;
-  background:#526f8b;color:#fff;
-  font-size:1.1rem;font-weight:700;cursor:pointer
-}
-#share-group{display:none;margin-top:8px}
-.share-btn{
-  padding:10px;margin-top:6px;
-  font-size:.95rem;background:#6c757d
-}
-#share-mobile{background:#06c755}
-#share-line{background:#00b900;color:#fff}
+#timer{padding:4px 10px;border-radius:6px;background:#e9ecef;font:700 1.1rem monospace}
+#wrap{position:relative;width:100%;aspect-ratio:1;margin-bottom:12px;background:#fff;border:3px solid #343a40;overflow:hidden}
+#board{display:grid;grid-template-columns:repeat(9,1fr);width:100%;height:100%}
+.cell{display:flex;align-items:center;justify-content:center;border:0;border-right:1px solid #dee2e6;border-bottom:1px solid #dee2e6;padding:0;background:#fff;color:#315f8a;font-size:1.35rem;font-weight:700;outline:0;cursor:pointer}
+.cell:nth-child(9n){border-right:0}.cell:nth-child(n+73){border-bottom:0}
+.fixed{background:#f2f4f6;color:#212529;font-weight:800;cursor:default}
+.grid{position:absolute;inset:0;pointer-events:none;display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr)}
+.grid i:nth-child(3n+1),.grid i:nth-child(3n+2){border-right:3px solid #343a40}
+.grid i:nth-child(-n+6){border-bottom:3px solid #343a40}
+.sel{background:#b3d7ff!important}.hi{background:#f0f4f8}.same{background:#d0e2ff}.err{background:#f8d7da!important;color:#b02a37!important}
+#status{min-height:24px;margin-bottom:12px;text-align:center;color:#b02a37;font-weight:700;font-size:.95rem}.ok{color:#2f7a45!important}
+#pad{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px}
+.btn{border:1px solid #ced4da;border-radius:8px;background:#fff;font-weight:700;cursor:pointer;touch-action:manipulation}
+.num{padding:12px 0;font-size:1.2rem}.clear{background:#f8d7da;color:#721c24;border-color:#f5c6cb;font-size:.95rem}
+.action{width:100%;padding:14px;border:0;border-radius:8px;background:#526f8b;color:#fff;font-size:1.05rem;font-weight:700;cursor:pointer}
+.sub{margin-top:6px;padding:10px;background:#6c757d;font-size:.95rem}
+#shareMobile{background:#06c755}#line{background:#00b900}
 .btn:focus-visible{outline:3px solid #80bdff}
-[hidden],canvas{display:none!important}
+#share{display:none;margin-top:8px}[hidden],canvas{display:none!important}
 </style>
 </head>
-
 <body>
 <main>
+<header><h1>数独</h1><div id="timer">00:00</div></header>
 
-<header>
-  <h1>数独</h1>
-  <div id="timer">00:00</div>
-</header>
-
-<div id="board-container">
-  <div id="board"></div>
-  <div class="grid-overlay">
-    <div class="grid-block"></div><div class="grid-block"></div><div class="grid-block"></div>
-    <div class="grid-block"></div><div class="grid-block"></div><div class="grid-block"></div>
-    <div class="grid-block"></div><div class="grid-block"></div><div class="grid-block"></div>
-  </div>
+<div id="wrap">
+<div id="board"></div>
+<div class="grid"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
 </div>
 
 <div id="status" aria-live="polite"></div>
 
 <div id="pad">
-  <button class="btn num" type="button">1</button>
-  <button class="btn num" type="button">2</button>
-  <button class="btn num" type="button">3</button>
-  <button class="btn num" type="button">4</button>
-  <button class="btn num" type="button">5</button>
-  <button class="btn num" type="button">6</button>
-  <button class="btn num" type="button">7</button>
-  <button class="btn num" type="button">8</button>
-  <button class="btn num" type="button">9</button>
-  <button class="btn num clear" type="button" data-n="0">消去</button>
+<button class="btn num" data-n="1">1</button><button class="btn num" data-n="2">2</button><button class="btn num" data-n="3">3</button><button class="btn num" data-n="4">4</button><button class="btn num" data-n="5">5</button>
+<button class="btn num" data-n="6">6</button><button class="btn num" data-n="7">7</button><button class="btn num" data-n="8">8</button><button class="btn num" data-n="9">9</button><button class="btn num clear" data-n="0">消去</button>
 </div>
 
-<button id="check" class="action btn" type="button">答え合わせ</button>
+<button id="check" class="action btn">答え合わせ</button>
 
-<div id="share-group">
-  <button id="share-mobile" class="action btn" type="button">結果を共有</button>
-  <button id="share-line" class="action btn share-btn" type="button">LINEで送る</button>
-  <button id="copy-text" class="action btn share-btn" type="button">結果文をコピー</button>
-  <button id="save-img" class="action btn share-btn" type="button">結果画像を保存</button>
+<div id="share">
+<button id="shareMobile" class="action btn" hidden>結果を共有</button>
+<button id="line" class="action btn sub">LINEで送る</button>
+<button id="copy" class="action btn sub">結果文をコピー</button>
+<button id="save" class="action btn sub">結果画像を保存</button>
 </div>
-
 </main>
 
-<canvas id="canvas" width="600" height="700"></canvas>
+<canvas id="cv" width="600" height="700"></canvas>
 
 <script>
-/* ===================================================
-   【画像読み取りデータ部】 (0: 空白)
-   =================================================== */
 const START=[
- [0,0,0,0,0,0,0,0,0],
- [0,0,0,0,0,0,0,0,0],
- [0,0,0,0,0,0,0,0,0],
- [0,0,0,0,0,0,0,0,0],
- [0,0,0,0,0,0,0,0,0],
- [0,0,0,0,0,0,0,0,0],
- [0,0,0,0,0,0,0,0,0],
- [0,0,0,0,0,0,0,0,0],
- [0,0,0,0,0,0,0,0,0]
+[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],
+[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],
+[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0]
 ];
 
-const $=id=>document.getElementById(id);
-const board=$("board"),status=$("status"),timer=$("timer");
-const check=$("check"),shareGroup=$("share-group");
-const shareMobile=$("share-mobile"),canvas=$("canvas");
+const $=s=>document.getElementById(s),
+board=$("board"),status=$("status"),timer=$("timer"),
+check=$("check"),share=$("share"),
+shareMobile=$("shareMobile"),cv=$("cv");
 
-let state=START.map(r=>[...r]);
-let selected=null,done=false,shareFile=null;
-const begin=performance.now();
+let a=START.map(r=>[...r]),
+sel=null,done=false,file=null,start=performance.now();
 
-const isMobile=
- /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
- (navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
-
-function cell(r,c){
-  return board.children[r*9+c];
-}
+const cell=(r,c)=>board.children[r*9+c],
+time=()=>{
+ let t=Math.floor((performance.now()-start)/1000);
+ return`${String(t/60|0).padStart(2,"0")}:${String(t%60).padStart(2,"0")}`
+};
 
 function init(){
-  START.forEach((row,r)=>row.forEach((n,c)=>{
-    const fixed=n!==0;
-    const el=document.createElement(fixed?"div":"button");
+ START.forEach((row,r)=>row.forEach((n,c)=>{
+  let e=document.createElement(n?"div":"button");
+  e.className="cell"+(n?" fixed":"");
+  e.textContent=n||"";
 
-    el.className="cell"+(fixed?" fixed":"");
-    el.textContent=n||"";
-
-    if(!fixed){
-      el.type="button";
-      el.setAttribute("aria-label",`${r+1}行${c+1}列`);
-      el.onclick=()=>{
-        selected={r,c};
-        render();
-      };
-    }
-
-    board.appendChild(el);
-  }));
-
-  shareMobile.hidden=!isMobile;
-}
-
-function input(n){
-  if(!selected||done)return;
-
-  const {r,c}=selected;
-  state[r][c]=n;
-  cell(r,c).textContent=n||"";
-
-  status.textContent="";
-  status.classList.remove("success");
-  render();
+  if(!n){
+   e.type="button";
+   e.ariaLabel=`${r+1}行${c+1}列`;
+   e.onclick=()=>{
+    sel={r,c};
+    render()
+   }
+  }
+  board.append(e)
+ }))
 }
 
 function conflicts(){
-  const set=new Set();
+ let s=new Set;
 
-  state.forEach((row,r)=>row.forEach((n,c)=>{
-    if(!n)return;
+ for(let r=0;r<9;r++)
+  for(let c=0;c<9;c++){
+   let n=a[r][c];
+   if(!n)continue;
 
-    for(let i=0;i<9;i++){
-      if(i!==c&&state[r][i]===n)set.add(`${r}-${c}`);
-      if(i!==r&&state[i][c]===n)set.add(`${r}-${c}`);
+   for(let i=0;i<9;i++)
+    if((i!=c&&a[r][i]==n)||(i!=r&&a[i][c]==n)){
+     s.add(r+"-"+c);
+     break
     }
 
-    const br=Math.floor(r/3)*3;
-    const bc=Math.floor(c/3)*3;
+   let R=r-r%3,C=c-c%3;
 
-    for(let y=br;y<br+3;y++)
-      for(let x=bc;x<bc+3;x++)
-        if((y!==r||x!==c)&&state[y][x]===n)
-          set.add(`${r}-${c}`);
-  }));
+   for(let y=R;y<R+3;y++)
+    for(let x=C;x<C+3;x++)
+     if((y!=r||x!=c)&&a[y][x]==n)
+      s.add(r+"-"+c)
+  }
 
-  return set;
+ return s
 }
 
 function render(){
-  const errs=conflicts();
-  const sv=selected?state[selected.r][selected.c]:0;
+ let er=conflicts(),
+ v=sel?a[sel.r][sel.c]:0;
 
-  for(let r=0;r<9;r++){
-    for(let c=0;c<9;c++){
-      const el=cell(r,c);
-      const v=state[r][c];
+ for(let r=0;r<9;r++)
+  for(let c=0;c<9;c++){
+   let e=cell(r,c),n=a[r][c];
 
-      el.classList.remove("selected","highlight","same","error");
+   e.classList.remove("sel","hi","same","err");
 
-      if(selected){
-        const block=
-          Math.floor(r/3)===Math.floor(selected.r/3)&&
-          Math.floor(c/3)===Math.floor(selected.c/3);
+   if(sel){
+    let b=
+     (r/3|0)==(sel.r/3|0)&&
+     (c/3|0)==(sel.c/3|0);
 
-        if(r===selected.r&&c===selected.c)
-          el.classList.add("selected");
-        else if(r===selected.r||c===selected.c||block)
-          el.classList.add("highlight");
+    if(r==sel.r&&c==sel.c)
+     e.classList.add("sel");
+    else if(r==sel.r||c==sel.c||b)
+     e.classList.add("hi");
 
-        if(sv&&v===sv)el.classList.add("same");
-      }
+    if(v&&n==v)e.classList.add("same")
+   }
 
-      if(errs.has(`${r}-${c}`))
-        el.classList.add("error");
-    }
+   if(er.has(r+"-"+c))
+    e.classList.add("err")
   }
+}
+
+function input(n){
+ if(!sel||done)return;
+
+ let{r,c}=sel;
+ a[r][c]=n;
+ cell(r,c).textContent=n||"";
+
+ status.textContent="";
+ status.classList.remove("ok");
+ render()
 }
 
 function tick(){
-  if(done)return;
-
-  const t=performance.now()-begin;
-  const m=Math.floor(t/60000);
-  const s=Math.floor(t/1000)%60;
-
-  timer.textContent=
-    `${String(m).padStart(2,"0")}:`+
-    `${String(s).padStart(2,"0")}`;
+ if(!done)timer.textContent=time()
 }
 
-async function checkAnswer(){
-  if(state.some(r=>r.includes(0))){
-    status.textContent="未入力のマスがあります。";
-    return;
+function draw(){
+ let x=cv.getContext("2d"),
+ p=30,t=120,z=540,w=60;
+
+ x.fillStyle="#f8f9fa";
+ x.fillRect(0,0,600,700);
+
+ x.textAlign="center";
+ x.textBaseline="middle";
+
+ x.fillStyle="#212529";
+ x.font="bold 32px sans-serif";
+ x.fillText("数独クリア！",300,50);
+
+ x.fillStyle="#526f8b";
+ x.font="bold 24px monospace";
+ x.fillText("タイム: "+timer.textContent,300,90);
+
+ for(let r=0;r<9;r++)
+  for(let c=0;c<9;c++){
+   let X=p+c*w,Y=t+r*w,f=START[r][c]!==0;
+
+   x.fillStyle=f?"#f2f4f6":"#fff";
+   x.fillRect(X,Y,w,w);
+
+   x.strokeStyle="#dee2e6";
+   x.lineWidth=1;
+   x.strokeRect(X,Y,w,w);
+
+   x.fillStyle=f?"#212529":"#315f8a";
+   x.font="bold 32px sans-serif";
+   x.fillText(a[r][c],X+w/2,Y+w/2)
   }
 
-  if(conflicts().size){
-    status.textContent="誤りがあります。";
-    return;
-  }
+ x.strokeStyle="#343a40";
+ x.lineWidth=3;
 
-  /* 答え合わせ時点の秒数を確定 */
-  tick();
-  done=true;
+ for(let i=0;i<=9;i+=3){
+  x.beginPath();
+  x.moveTo(p+i*w,t);
+  x.lineTo(p+i*w,t+z);
+  x.stroke();
 
-  status.classList.add("success");
-  status.textContent=`正解です！ クリアタイム: ${timer.textContent}`;
-
-  check.style.display="none";
-  selected=null;
-  render();
-
-  await prepareImage();
-  shareGroup.style.display="block";
+  x.beginPath();
+  x.moveTo(p,t+i*w);
+  x.lineTo(p+z,t+i*w);
+  x.stroke()
+ }
 }
 
-function drawCanvas(){
-  const ctx=canvas.getContext("2d");
-  const pos=30,top=120,size=540,w=size/9;
+async function prep(){
+ draw();
 
-  ctx.fillStyle="#f8f9fa";
-  ctx.fillRect(0,0,600,700);
+ let b=await new Promise(r=>
+  cv.toBlob(r,"image/png")
+ );
 
-  ctx.textAlign="center";
-  ctx.textBaseline="middle";
-
-  ctx.fillStyle="#212529";
-  ctx.font="bold 32px sans-serif";
-  ctx.fillText("数独クリア！",300,50);
-
-  ctx.fillStyle="#526f8b";
-  ctx.font="bold 24px monospace";
-  ctx.fillText(`タイム: ${timer.textContent}`,300,90);
-
-  state.forEach((row,r)=>row.forEach((n,c)=>{
-    const x=pos+c*w,y=top+r*w;
-
-    ctx.fillStyle=START[r][c]?"#f2f4f6":"#fff";
-    ctx.fillRect(x,y,w,w);
-
-    ctx.strokeStyle="#dee2e6";
-    ctx.lineWidth=1;
-    ctx.strokeRect(x,y,w,w);
-
-    ctx.fillStyle=START[r][c]?"#212529":"#315f8a";
-    ctx.font="bold 32px sans-serif";
-    ctx.fillText(n,x+w/2,y+w/2);
-  }));
-
-  ctx.strokeStyle="#343a40";
-  ctx.lineWidth=3;
-
-  for(let i=0;i<=9;i+=3){
-    ctx.beginPath();
-    ctx.moveTo(pos+i*w,top);
-    ctx.lineTo(pos+i*w,top+size);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(pos,top+i*w);
-    ctx.lineTo(pos+size,top+i*w);
-    ctx.stroke();
-  }
-}
-
-async function prepareImage(){
-  drawCanvas();
-
-  const blob=await new Promise(resolve=>
-    canvas.toBlob(resolve,"image/png")
+ if(b)
+  file=new File(
+   [b],
+   "sudoku_result.png",
+   {type:"image/png"}
   );
 
-  if(blob)
-    shareFile=new File(
-      [blob],
-      "sudoku_result.png",
-      {type:"image/png"}
-    );
+ shareMobile.hidden=
+  !(file&&navigator.share&&navigator.canShare?.({files:[file]}))
 }
 
-const shareText=()=>
-  `数独をクリアしました！\nクリアタイム: ${timer.textContent}`;
+async function finish(){
+ if(a.some(r=>r.includes(0))){
+  status.textContent="未入力のマスがあります。";
+  return
+ }
+
+ if(conflicts().size){
+  status.textContent="誤りがあります。";
+  return
+ }
+
+ tick();
+ done=true;
+ sel=null;
+ render();
+
+ status.classList.add("ok");
+ status.textContent=
+  "正解です！ クリアタイム: "+timer.textContent;
+
+ check.hidden=true;
+
+ await prep();
+ share.style.display="block"
+}
+
+const text=()=>
+ `数独をクリアしました！\nクリアタイム: ${timer.textContent}`;
 
 shareMobile.onclick=async()=>{
-  if(
-    !shareFile||
-    !navigator.share||
-    !navigator.canShare?.({files:[shareFile]})
-  ){
-    alert("この端末では画像共有を利用できません。");
-    return;
-  }
-
-  try{
-    await navigator.share({
-      title:"数独クリア結果",
-      text:shareText(),
-      files:[shareFile]
-    });
-  }catch(e){
-    if(e.name!=="AbortError")
-      alert("共有できませんでした。");
-  }
+ try{
+  await navigator.share({
+   title:"数独クリア結果",
+   text:text(),
+   files:[file]
+  })
+ }catch(e){
+  if(e.name!="AbortError")
+   alert("共有できませんでした。")
+ }
 };
 
-/* LINE送信機能 */
-$("share-line").onclick=()=>{
-  const url=`https://line.me/R/msg/text/?${encodeURIComponent(shareText())}`;
-  window.open(url,"_blank");
-};
+$("line").onclick=()=>
+ window.open(
+  `https://line.me/R/msg/text/?${encodeURIComponent(text())}`,
+  "_blank"
+ );
 
-$("copy-text").onclick=async()=>{
-  const text=shareText();
-  let ok=false;
+$("copy").onclick=async()=>{
+ let ok=false;
+
+ try{
+  await navigator.clipboard.writeText(text());
+  ok=true
+ }catch{}
+
+ if(!ok){
+  let q=document.createElement("textarea");
+  q.value=text();
+  q.style.cssText="position:fixed;opacity:0";
+
+  document.body.append(q);
+  q.select();
 
   try{
-    if(navigator.clipboard){
-      await navigator.clipboard.writeText(text);
-      ok=true;
-    }
+   ok=document.execCommand("copy")
   }catch{}
 
-  if(!ok){
-    const area=document.createElement("textarea");
-    area.value=text;
-    area.style.position="fixed";
-    area.style.opacity="0";
-    document.body.appendChild(area);
-    area.select();
+  q.remove()
+ }
 
-    try{
-      ok=document.execCommand("copy");
-    }catch{}
-
-    area.remove();
-  }
-
-  alert(ok?"結果文をコピーしました":"コピーできませんでした。");
+ alert(ok?
+  "結果文をコピーしました":
+  "コピーできませんでした."
+ )
 };
 
-$("save-img").onclick=()=>{
-  const a=document.createElement("a");
-  a.download="sudoku_result.png";
-  a.href=canvas.toDataURL("image/png");
-  a.click();
+$("save").onclick=()=>{
+ let q=document.createElement("a");
+ q.download="sudoku_result.png";
+ q.href=cv.toDataURL("image/png");
+ q.click()
 };
 
-document.querySelectorAll(".num").forEach((b,i)=>{
-  b.onclick=()=>input(b.dataset.n==="0"?0:i+1);
-});
-
-check.onclick=checkAnswer;
+document.querySelectorAll(".num").forEach(
+ b=>b.onclick=()=>input(+b.dataset.n)
+);
 
 document.addEventListener("keydown",e=>{
-  if(!selected||done)return;
+ if(!sel||done)return;
 
-  if(/^[1-9]$/.test(e.key))
-    input(+e.key);
-  else if(["0","Backspace","Delete"].includes(e.key)){
-    e.preventDefault();
-    input(0);
-  }
+ if(/^[1-9]$/.test(e.key))
+  input(+e.key);
+ else if(["0","Backspace","Delete"].includes(e.key)){
+  e.preventDefault();
+  input(0)
+ }
 });
+
+check.onclick=finish;
 
 init();
 tick();
