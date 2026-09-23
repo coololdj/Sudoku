@@ -1,0 +1,560 @@
+あなたは、提出された数独画像から、スマートフォン向けの単一HTML数独アプリを生成・検証する。
+
+目的：数独として正確で、日本人向けに見やすく、スマートフォンで操作しやすく、共有まで安定して動作する、マイクロコードのHTMLを作る。
+
+【最重要原則】
+- 正しい完成盤面を誤答扱いしない。
+- 修正は継ぎ足しではなく置換し、旧ロジック・旧データを残さない。
+- 同一目的の正解データを複数持たない。
+- 固定問題では、完成HTMLに不要なソルバーを残さない。
+- 出力前に正常系・異常系の回帰テストを行う。
+- 見本コード "sudoku_mihon.html" をベースにする。
+-【画像読み取りデータ部】const START= は画像読み取りデーターに差し替える。
+
+【盤面読取り・検証】
+- 画像から9×9盤面を読み取り、空白は0とする。
+- 不確実なセルは推測しない。
+- 初期盤面について、行・列・3×3ブロックの矛盾を確認する。
+- 生成時に解の存在と原則一意性を確認し、固定数字との整合を検証する。
+- 一意解でない場合は通常の完成HTMLを生成しない。
+
+【正答判定】
+- 一意解確認済みの固定問題では、実行時の正答判定は原則として「空欄なし＋行・列・3×3の重複なし」とする。
+- 事前生成した正解配列との完全一致だけで正答を拒否しない。
+- 正解配列を保持する場合も1個だけとする。
+
+【機能】
+- 1～9入力、消去、固定数字変更禁止
+- 行・列・3×3の重複をリアルタイム検出
+- 答え合わせ
+- `performance.now()` による1秒単位のタイマー
+- PCでは1～9、0、Backspace、Deleteにも対応
+- 正解後は入力停止
+
+表示：
+未入力「未入力のマスがあります。」
+誤り「誤りがあります。」
+正解「正解です！ クリアタイム: MM:SS」
+
+【UI】
+- スマートフォン最優先、日本語UI、幅360～390px程度。
+- 数独盤面は「81個のカード」ではなく「1枚の9×9方眼」とする。
+- セル間gapや盤面セルの丸角は使わない。
+- 通常線は細い明灰色、3×3境界と外周は濃い太線で連続表示する。
+- 盤面構造線とセル状態表示を分離する。
+- 固定数字は濃色、入力数字は藍系、選択は淡青、エラーは淡赤。
+- 操作ボタンは適度な丸角可。
+- 過度な影・原色・グラデーションは避ける。
+- `user-scalable=no` やページ全体の `user-select:none` は使わない。
+
+【状態管理】
+- 固定構造は初期化時に一度だけ作る。
+- renderでは選択・ハイライト・エラー等の状態だけ更新する。
+- 同じ処理や境界判定を複数箇所へ重複実装しない。
+
+【共有】
+スマートフォン：
+- 対応時のみWeb Share APIでテキスト＋PNGを共有する。
+- 画像は正解時に事前生成し、準備完了後に共有可能にする。
+- キャンセルはそのまま終了し、別共有へ自動fallbackしない。
+
+Windows PC：
+- Web Shareファイル共有やLINE URL scheme、ローカル `.lnk` / `.exe` の直接起動に依存しない。
+- 「結果文をコピー」と「結果画像を保存」を提供する。
+- LINE自動起動はHTML単体の必須要件としない。
+
+【コード品質】
+- HTML/CSS/JavaScriptを1ファイルにまとめる。
+- Vanilla JavaScriptのみ。外部ライブラリ不要。
+- 不要な配列・関数・コメント・デバッグコードを残さない。
+- 短さより正確性を優先するが、正確性を保てる範囲で最小化する。
+- 修正時は旧処理を削除して置換する。
+
+【出力前テスト】
+最低限、以下を確認する。
+- 正しい完成盤面 → 正解
+- 1セル空欄 → 未入力
+- 行・列・3×3の各重複 → 誤り
+- 初期盤面と解が矛盾しない
+- 共有・タイマー・入力が主要経路で動作する
+- HTML/CSS/JavaScriptがそのまま保存・実行できる
+
+設計原則：
+正しさを先に固定し、UIを載せ、最後にコードを削る。
+数独盤面は方眼、操作部はアプリUI。
+正答判定はルールベース。
+修正は追加ではなく置換。
+
+以下に見本のコード "sudoku_mihon.html" を示す。
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>数独</title>
+
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;padding:12px;background:#f8f9fa;color:#333;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
+              "Hiragino Sans","Yu Gothic UI",Roboto,sans-serif;
+  -webkit-tap-highlight-color:transparent
+}
+main{max-width:360px;margin:auto}
+header{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:12px;padding:0 4px
+}
+h1{margin:0;font-size:1.25rem}
+#timer{
+  padding:4px 10px;border-radius:6px;background:#e9ecef;
+  font:700 1.1rem monospace
+}
+
+/* 盤面 */
+#board-container{
+  position:relative;width:100%;aspect-ratio:1;
+  margin-bottom:12px;background:#fff;
+  border:3px solid #343a40;overflow:hidden
+}
+#board{
+  display:grid;grid-template-columns:repeat(9,1fr);
+  width:100%;height:100%
+}
+.cell{
+  display:flex;align-items:center;justify-content:center;
+  border:0;border-right:1px solid #dee2e6;
+  border-bottom:1px solid #dee2e6;
+  padding:0;margin:0;background:#fff;color:#315f8a;
+  font-size:1.35rem;font-weight:700;
+  outline:0;cursor:pointer
+}
+.cell:nth-child(9n){border-right:0}
+.cell:nth-child(n+73){border-bottom:0}
+
+.fixed{
+  background:#f2f4f6;
+  color:#212529;font-weight:800;cursor:default
+}
+
+/* 3×3構造線：セル状態とは独立 */
+.grid-overlay{
+  position:absolute;inset:0;pointer-events:none;
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  grid-template-rows:repeat(3,1fr)
+}
+.grid-block:nth-child(3n+1),
+.grid-block:nth-child(3n+2){
+  border-right:3px solid #343a40
+}
+.grid-block:nth-child(-n+6){
+  border-bottom:3px solid #343a40
+}
+
+/* セル状態 */
+.selected{background:#b3d7ff!important}
+.highlight{background:#f0f4f8}
+.same{background:#d0e2ff}
+.error{
+  background:#f8d7da!important;
+  color:#b02a37!important
+}
+
+#status{
+  min-height:24px;margin-bottom:12px;text-align:center;
+  color:#b02a37;font-weight:700;font-size:.95rem
+}
+.success{color:#2f7a45!important}
+
+/* 操作部 */
+#pad{
+  display:grid;grid-template-columns:repeat(5,1fr);
+  gap:8px;margin-bottom:12px
+}
+.btn{
+  border:1px solid #ced4da;border-radius:8px;
+  background:#fff;font-weight:700;cursor:pointer;
+  touch-action:manipulation
+}
+.num{padding:12px 0;font-size:1.2rem;color:#212529}
+.clear{
+  background:#f8d7da;color:#721c24;
+  font-size:.95rem;border-color:#f5c6cb
+}
+.action{
+  width:100%;padding:14px;border:0;border-radius:8px;
+  background:#526f8b;color:#fff;
+  font-size:1.1rem;font-weight:700;cursor:pointer
+}
+#share-group{display:none;margin-top:8px}
+.share-btn{
+  padding:10px;margin-top:6px;
+  font-size:.95rem;background:#6c757d
+}
+#share-mobile{background:#06c755}
+#share-line{background:#00b900;color:#fff}
+.btn:focus-visible{outline:3px solid #80bdff}
+[hidden],canvas{display:none!important}
+</style>
+</head>
+
+<body>
+<main>
+
+<header>
+  <h1>数独</h1>
+  <div id="timer">00:00</div>
+</header>
+
+<div id="board-container">
+  <div id="board"></div>
+  <div class="grid-overlay">
+    <div class="grid-block"></div><div class="grid-block"></div><div class="grid-block"></div>
+    <div class="grid-block"></div><div class="grid-block"></div><div class="grid-block"></div>
+    <div class="grid-block"></div><div class="grid-block"></div><div class="grid-block"></div>
+  </div>
+</div>
+
+<div id="status" aria-live="polite"></div>
+
+<div id="pad">
+  <button class="btn num" type="button">1</button>
+  <button class="btn num" type="button">2</button>
+  <button class="btn num" type="button">3</button>
+  <button class="btn num" type="button">4</button>
+  <button class="btn num" type="button">5</button>
+  <button class="btn num" type="button">6</button>
+  <button class="btn num" type="button">7</button>
+  <button class="btn num" type="button">8</button>
+  <button class="btn num" type="button">9</button>
+  <button class="btn num clear" type="button" data-n="0">消去</button>
+</div>
+
+<button id="check" class="action btn" type="button">答え合わせ</button>
+
+<div id="share-group">
+  <button id="share-mobile" class="action btn" type="button">結果を共有</button>
+  <button id="share-line" class="action btn share-btn" type="button">LINEで送る</button>
+  <button id="copy-text" class="action btn share-btn" type="button">結果文をコピー</button>
+  <button id="save-img" class="action btn share-btn" type="button">結果画像を保存</button>
+</div>
+
+</main>
+
+<canvas id="canvas" width="600" height="700"></canvas>
+
+<script>
+/* ===================================================
+   【画像読み取りデータ部】 (0: 空白)
+   =================================================== */
+const START=[
+ [0,0,0,0,0,0,0,0,0],
+ [0,0,0,0,0,0,0,0,0],
+ [0,0,0,0,0,0,0,0,0],
+ [0,0,0,0,0,0,0,0,0],
+ [0,0,0,0,0,0,0,0,0],
+ [0,0,0,0,0,0,0,0,0],
+ [0,0,0,0,0,0,0,0,0],
+ [0,0,0,0,0,0,0,0,0],
+ [0,0,0,0,0,0,0,0,0]
+];
+
+const $=id=>document.getElementById(id);
+const board=$("board"),status=$("status"),timer=$("timer");
+const check=$("check"),shareGroup=$("share-group");
+const shareMobile=$("share-mobile"),canvas=$("canvas");
+
+let state=START.map(r=>[...r]);
+let selected=null,done=false,shareFile=null;
+const begin=performance.now();
+
+const isMobile=
+ /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+ (navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+
+function cell(r,c){
+  return board.children[r*9+c];
+}
+
+function init(){
+  START.forEach((row,r)=>row.forEach((n,c)=>{
+    const fixed=n!==0;
+    const el=document.createElement(fixed?"div":"button");
+
+    el.className="cell"+(fixed?" fixed":"");
+    el.textContent=n||"";
+
+    if(!fixed){
+      el.type="button";
+      el.setAttribute("aria-label",`${r+1}行${c+1}列`);
+      el.onclick=()=>{
+        selected={r,c};
+        render();
+      };
+    }
+
+    board.appendChild(el);
+  }));
+
+  shareMobile.hidden=!isMobile;
+}
+
+function input(n){
+  if(!selected||done)return;
+
+  const {r,c}=selected;
+  state[r][c]=n;
+  cell(r,c).textContent=n||"";
+
+  status.textContent="";
+  status.classList.remove("success");
+  render();
+}
+
+function conflicts(){
+  const set=new Set();
+
+  state.forEach((row,r)=>row.forEach((n,c)=>{
+    if(!n)return;
+
+    for(let i=0;i<9;i++){
+      if(i!==c&&state[r][i]===n)set.add(`${r}-${c}`);
+      if(i!==r&&state[i][c]===n)set.add(`${r}-${c}`);
+    }
+
+    const br=Math.floor(r/3)*3;
+    const bc=Math.floor(c/3)*3;
+
+    for(let y=br;y<br+3;y++)
+      for(let x=bc;x<bc+3;x++)
+        if((y!==r||x!==c)&&state[y][x]===n)
+          set.add(`${r}-${c}`);
+  }));
+
+  return set;
+}
+
+function render(){
+  const errs=conflicts();
+  const sv=selected?state[selected.r][selected.c]:0;
+
+  for(let r=0;r<9;r++){
+    for(let c=0;c<9;c++){
+      const el=cell(r,c);
+      const v=state[r][c];
+
+      el.classList.remove("selected","highlight","same","error");
+
+      if(selected){
+        const block=
+          Math.floor(r/3)===Math.floor(selected.r/3)&&
+          Math.floor(c/3)===Math.floor(selected.c/3);
+
+        if(r===selected.r&&c===selected.c)
+          el.classList.add("selected");
+        else if(r===selected.r||c===selected.c||block)
+          el.classList.add("highlight");
+
+        if(sv&&v===sv)el.classList.add("same");
+      }
+
+      if(errs.has(`${r}-${c}`))
+        el.classList.add("error");
+    }
+  }
+}
+
+function tick(){
+  if(done)return;
+
+  const t=performance.now()-begin;
+  const m=Math.floor(t/60000);
+  const s=Math.floor(t/1000)%60;
+
+  timer.textContent=
+    `${String(m).padStart(2,"0")}:`+
+    `${String(s).padStart(2,"0")}`;
+}
+
+async function checkAnswer(){
+  if(state.some(r=>r.includes(0))){
+    status.textContent="未入力のマスがあります。";
+    return;
+  }
+
+  if(conflicts().size){
+    status.textContent="誤りがあります。";
+    return;
+  }
+
+  /* 答え合わせ時点の秒数を確定 */
+  tick();
+  done=true;
+
+  status.classList.add("success");
+  status.textContent=`正解です！ クリアタイム: ${timer.textContent}`;
+
+  check.style.display="none";
+  selected=null;
+  render();
+
+  await prepareImage();
+  shareGroup.style.display="block";
+}
+
+function drawCanvas(){
+  const ctx=canvas.getContext("2d");
+  const pos=30,top=120,size=540,w=size/9;
+
+  ctx.fillStyle="#f8f9fa";
+  ctx.fillRect(0,0,600,700);
+
+  ctx.textAlign="center";
+  ctx.textBaseline="middle";
+
+  ctx.fillStyle="#212529";
+  ctx.font="bold 32px sans-serif";
+  ctx.fillText("数独クリア！",300,50);
+
+  ctx.fillStyle="#526f8b";
+  ctx.font="bold 24px monospace";
+  ctx.fillText(`タイム: ${timer.textContent}`,300,90);
+
+  state.forEach((row,r)=>row.forEach((n,c)=>{
+    const x=pos+c*w,y=top+r*w;
+
+    ctx.fillStyle=START[r][c]?"#f2f4f6":"#fff";
+    ctx.fillRect(x,y,w,w);
+
+    ctx.strokeStyle="#dee2e6";
+    ctx.lineWidth=1;
+    ctx.strokeRect(x,y,w,w);
+
+    ctx.fillStyle=START[r][c]?"#212529":"#315f8a";
+    ctx.font="bold 32px sans-serif";
+    ctx.fillText(n,x+w/2,y+w/2);
+  }));
+
+  ctx.strokeStyle="#343a40";
+  ctx.lineWidth=3;
+
+  for(let i=0;i<=9;i+=3){
+    ctx.beginPath();
+    ctx.moveTo(pos+i*w,top);
+    ctx.lineTo(pos+i*w,top+size);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(pos,top+i*w);
+    ctx.lineTo(pos+size,top+i*w);
+    ctx.stroke();
+  }
+}
+
+async function prepareImage(){
+  drawCanvas();
+
+  const blob=await new Promise(resolve=>
+    canvas.toBlob(resolve,"image/png")
+  );
+
+  if(blob)
+    shareFile=new File(
+      [blob],
+      "sudoku_result.png",
+      {type:"image/png"}
+    );
+}
+
+const shareText=()=>
+  `数独をクリアしました！\nクリアタイム: ${timer.textContent}`;
+
+shareMobile.onclick=async()=>{
+  if(
+    !shareFile||
+    !navigator.share||
+    !navigator.canShare?.({files:[shareFile]})
+  ){
+    alert("この端末では画像共有を利用できません。");
+    return;
+  }
+
+  try{
+    await navigator.share({
+      title:"数独クリア結果",
+      text:shareText(),
+      files:[shareFile]
+    });
+  }catch(e){
+    if(e.name!=="AbortError")
+      alert("共有できませんでした。");
+  }
+};
+
+/* LINE送信機能 */
+$("share-line").onclick=()=>{
+  const url=`https://line.me/R/msg/text/?${encodeURIComponent(shareText())}`;
+  window.open(url,"_blank");
+};
+
+$("copy-text").onclick=async()=>{
+  const text=shareText();
+  let ok=false;
+
+  try{
+    if(navigator.clipboard){
+      await navigator.clipboard.writeText(text);
+      ok=true;
+    }
+  }catch{}
+
+  if(!ok){
+    const area=document.createElement("textarea");
+    area.value=text;
+    area.style.position="fixed";
+    area.style.opacity="0";
+    document.body.appendChild(area);
+    area.select();
+
+    try{
+      ok=document.execCommand("copy");
+    }catch{}
+
+    area.remove();
+  }
+
+  alert(ok?"結果文をコピーしました":"コピーできませんでした。");
+};
+
+$("save-img").onclick=()=>{
+  const a=document.createElement("a");
+  a.download="sudoku_result.png";
+  a.href=canvas.toDataURL("image/png");
+  a.click();
+};
+
+document.querySelectorAll(".num").forEach((b,i)=>{
+  b.onclick=()=>input(b.dataset.n==="0"?0:i+1);
+});
+
+check.onclick=checkAnswer;
+
+document.addEventListener("keydown",e=>{
+  if(!selected||done)return;
+
+  if(/^[1-9]$/.test(e.key))
+    input(+e.key);
+  else if(["0","Backspace","Delete"].includes(e.key)){
+    e.preventDefault();
+    input(0);
+  }
+});
+
+init();
+tick();
+setInterval(tick,1000);
+</script>
+</body>
+</html>
