@@ -1,0 +1,424 @@
+最初は、Python標準ライブラリだけで `532MB CSV → 検証済み SQLite` を作るのが最も簡単です。`solution` と `clues` は検証時だけ使い、DBには保存しません。
+
+使用するファイルを同じフォルダに置きます。
+
+```text
+sudoku_dataset/
+├─ sudoku-3m.csv
+└─ csv_to_sqlite.py
+```
+
+Windows 11なら、そのフォルダでPowerShellを開きます。
+
+```powershell
+python --version
+```
+
+Python 3が使えることを確認してください。追加パッケージは不要です。
+
+次に `csv_to_sqlite.py` を以下の内容で作成してください。
+
+```python
+import csv, sqlite3, sys, time
+
+CSV = "sudoku-3m.csv"
+DB  = "sudoku.db"
+BATCH = 10000
+
+FULL = (1 << 9) - 1
+
+def norm(s):
+    return s.strip().replace("0", ".")
+
+def valid_puzzle(p):
+    if len(p) != 81 or any(c not in ".123456789" for c in p):
+        return False
+
+    for unit in units():
+        seen = set()
+        for i in unit:
+            c = p[i]
+            if c != ".":
+                if c in seen:
+                    return False
+                seen.add(c)
+    return True
+
+def valid_solution(s):
+    if len(s) != 81 or any(c not in "123456789" for c in s):
+        return False
+
+    target = set("123456789")
+    return all({s[i] for i in u} == target for u in units())
+
+def compatible(p, s):
+    return all(a == "." or a == b for a, b in zip(p, s))
+
+def units():
+    for r in range(9):
+        yield [r * 9 + c for c in range(9)]
+
+    for c in range(9):
+        yield [r * 9 + c for r in range(9)]
+
+    for br in range(0, 9, 3):
+        for bc in range(0, 9, 3):
+            yield [
+                (br + r) * 9 + bc + c
+                for r in range(3)
+                for c in range(3)
+            ]
+
+def unique_solution(puzzle):
+    board = [0 if c == "." else int(c) for c in puzzle]
+    row = [0] * 9
+    col = [0] * 9
+    box = [0] * 9
+
+    for i, n in enumerate(board):
+        if not n:
+            continue
+
+        r, c = divmod(i, 9)
+        b = (r // 3) * 3 + c // 3
+        bit = 1 << (n - 1)
+
+        if row[r] & bit or col[c] & bit or box[b] & bit:
+            return False
+
+        row[r] |= bit
+        col[c] |= bit
+        box[b] |= bit
+
+    count = 0
+
+    def solve():
+        nonlocal count
+
+        best = -1
+        bestmask = 0
+        bestn = 10
+
+        for i, n in enumerate(board):
+            if n:
+                continue
+
+            r, c = divmod(i, 9)
+            b = (r // 3) * 3 + c // 3
+            mask = FULL & ~(row[r] | col[c] | box[b])
+            nopts = mask.bit_count()
+
+            if nopts == 0:
+                return
+
+            if nopts < bestn:
+                best = i
+                bestmask = mask
+                bestn = nopts
+                if nopts == 1:
+                    break
+
+        if best < 0:
+            count += 1
+            return
+
+        r, c = divmod(best, 9)
+        b = (r // 3) * 3 + c // 3
+        mask = bestmask
+
+        while mask and count < 2:
+            bit = mask & -mask
+            mask -= bit
+            n = bit.bit_length()
+
+            board[best] = n
+            row[r] |= bit
+            col[c] |= bit
+            box[b] |= bit
+
+            solve()
+
+            board[best] = 0
+            row[r] ^= bit
+            col[c] ^= bit
+            box[b] ^= bit
+
+    solve()
+    return count == 1
+
+def main():
+    con = sqlite3.connect(DB)
+
+    con.execute("PRAGMA journal_mode=WAL")
+    con.execute("PRAGMA synchronous=NORMAL")
+    con.execute("PRAGMA temp_store=MEMORY")
+
+    con.execute("DROP TABLE IF EXISTS sudoku")
+
+    con.execute("""
+        CREATE TABLE sudoku(
+            id INTEGER PRIMARY KEY,
+            puzzle TEXT NOT NULL
+                CHECK(length(puzzle)=81),
+            difficulty REAL NOT NULL
+        )
+    """)
+
+    counts = {
+        "read": 0,
+        "insert": 0,
+        "format": 0,
+        "puzzle_conflict": 0,
+        "solution_invalid": 0,
+        "mismatch": 0,
+        "non_unique": 0,
+    }
+
+    batch = []
+    start = time.time()
+
+    with open(CSV, newline="", encoding="utf-8") as f:
+        rd = csv.DictReader(f)
+
+        required = {"id", "puzzle", "solution", "difficulty"}
+        missing = required - set(rd.fieldnames or [])
+
+        if missing:
+            raise RuntimeError(
+                "CSV列不足: " + ", ".join(sorted(missing))
+            )
+
+        for row in rd:
+            counts["read"] += 1
+
+            p = norm(row["puzzle"])
+            s = norm(row["solution"])
+
+            # ① CSV読込 + 基本形式
+            if len(p) != 81 or len(s) != 81:
+                counts["format"] += 1
+                continue
+
+            # ③ puzzle矛盾検査
+            if not valid_puzzle(p):
+                counts["puzzle_conflict"] += 1
+                continue
+
+            # ④ solution完成盤検査
+            if not valid_solution(s):
+                counts["solution_invalid"] += 1
+                continue
+
+            # ② puzzle / solution照合
+            if not compatible(p, s):
+                counts["mismatch"] += 1
+                continue
+
+            # ⑤ 一意解確認
+            if not unique_solution(p):
+                counts["non_unique"] += 1
+                continue
+
+            try:
+                sid = int(row["id"])
+                difficulty = float(row["difficulty"])
+            except (ValueError, TypeError):
+                counts["format"] += 1
+                continue
+
+            # ⑥ 合格データのみ
+            batch.append((sid, p, difficulty))
+
+            if len(batch) >= BATCH:
+                con.executemany(
+                    "INSERT INTO sudoku(id,puzzle,difficulty) VALUES(?,?,?)",
+                    batch
+                )
+                con.commit()
+                counts["insert"] += len(batch)
+                batch.clear()
+
+            if counts["read"] % 10000 == 0:
+                print(
+                    f'{counts["read"]:,} 読込 / '
+                    f'{counts["insert"] + len(batch):,} 合格',
+                    flush=True
+                )
+
+    if batch:
+        con.executemany(
+            "INSERT INTO sudoku(id,puzzle,difficulty) VALUES(?,?,?)",
+            batch
+        )
+        counts["insert"] += len(batch)
+        con.commit()
+
+    # 大量INSERT終了後にindexを作る
+    con.execute("""
+        CREATE INDEX idx_sudoku_difficulty
+        ON sudoku(difficulty)
+    """)
+
+    con.execute("ANALYZE")
+    con.commit()
+
+    db_count = con.execute(
+        "SELECT count(*) FROM sudoku"
+    ).fetchone()[0]
+
+    print("\n--- 完了 ---")
+    for k, v in counts.items():
+        print(f"{k:18s}: {v:,}")
+
+    print(f"{'DB records':18s}: {db_count:,}")
+    print(f"{'seconds':18s}: {time.time()-start:.1f}")
+
+    con.close()
+
+if __name__ == "__main__":
+    main()
+```
+
+実行はこれだけです。
+
+```powershell
+python csv_to_sqlite.py
+```
+
+処理中は、
+
+```text
+10,000 読込 / 9,998 合格
+20,000 読込 / 19,996 合格
+...
+```
+
+のように表示されます。
+
+完成後、
+
+```text
+sudoku.db
+```
+
+ができます。
+
+DBの中身は最終的にこれだけです。
+
+```text
+id | puzzle | difficulty
+```
+
+`solution` と `clues` は入りません。
+
+### 各検査とコードの対応
+
+ユーザー指定の①～⑥は、正確には次の順番で実行しています。
+
+| 処理 | 実処理 |
+|---|---|
+| ① CSV読込 | `csv.DictReader()` |
+| ② puzzle/solution照合 | `compatible()` |
+| ③ puzzle矛盾検査 | `valid_puzzle()` |
+| ④ solution完成盤検査 | `valid_solution()` |
+| ⑤ 一意解確認 | `unique_solution()` |
+| ⑥ 合格のみINSERT | `executemany()` |
+
+実際の処理順は高速化のため、
+
+```text
+CSV読込
+ ↓
+文字形式検査
+ ↓
+puzzle矛盾検査
+ ↓
+solution完成盤検査
+ ↓
+puzzle/solution照合
+ ↓
+一意解検査
+ ↓
+INSERT
+```
+
+です。計算量の大きい一意解検査を最後にしています。
+
+### 作成後の確認
+
+Pythonから簡単に確認できます。
+
+PowerShellで、
+
+```powershell
+python
+```
+
+を実行し、
+
+```python
+import sqlite3
+db=sqlite3.connect("sudoku.db")
+
+db.execute("SELECT count(*) FROM sudoku").fetchone()
+```
+
+300万件すべて合格していれば、
+
+```text
+(3000000,)
+```
+
+に近い結果になります。
+
+難易度分布：
+
+```python
+db.execute("""
+SELECT
+ round(difficulty,1),
+ count(*)
+FROM sudoku
+GROUP BY round(difficulty,1)
+ORDER BY 1
+""").fetchall()
+```
+
+1問取得：
+
+```python
+db.execute("""
+SELECT id,puzzle,difficulty
+FROM sudoku
+WHERE difficulty BETWEEN 1.0 AND 1.2
+LIMIT 1
+""").fetchone()
+```
+
+例えば返却値は、
+
+```text
+(123456, '..4...7......', 1.13)
+```
+
+のようになります。
+
+### 重要な一点
+
+最初の本番変換では、**一意解検査を省略しない**方がよいです。
+
+今回ここで一度だけ、
+
+```text
+元CSV
+     ↓
+全件品質検証
+     ↓
+検証済み sudoku.db
+```
+
+を作っておけば、以後 `sudoku_prompt` がDBから1問取得するたびにソルバーを動かす必要がなくなります。
+
+また、indexはINSERT前ではなく、上記コードのように**300万件の登録終了後に作成**してください。大量INSERT時にはこちらの方が無駄がありません。
+
+次の作業は `sudoku.db` が正常に完成してから、`difficulty` を使った「1問抽出用の極小Python」を作ればよく、AIへ渡すデータは最終的に `id + puzzle + difficulty` の1レコードだけにできます。
